@@ -1,4 +1,4 @@
-"""Heterogeneous Graph Transformer (HGT) Implementation"""
+"""Triển khai Heterogeneous Graph Transformer (HGT) cho gợi ý công việc"""
 
 import torch
 import torch.nn as nn
@@ -8,15 +8,15 @@ from torch_geometric.nn import HGTConv, Linear
 
 class HGT(nn.Module):
     """
-    Heterogeneous Graph Transformer (HGT) for job recommendation
+    Mô hình Heterogeneous Graph Transformer (HGT) cho gợi ý công việc
     
     Paper: "Heterogeneous Graph Transformer" (WWW 2020)
     https://arxiv.org/abs/2003.01332
     
-    Architecture:
-    - Input projection layers for each node type
-    - Multiple HGT convolution layers
-    - Output projection for task-specific predictions
+    Kiến trúc:
+    - Lớp projection đầu vào cho mỗi loại node
+    - Nhiều lớp HGT convolution
+    - Lớp projection đầu ra cho các tác vụ cụ thể
     """
     
     def __init__(
@@ -29,13 +29,13 @@ class HGT(nn.Module):
         node_type_dims=None,
     ):
         """
-        Args:
-            metadata: PyG HeteroData metadata (node types, edge types)
-            hidden_channels: Hidden dimension size
-            out_channels: Output embedding dimension
-            num_heads: Number of attention heads
-            num_layers: Number of HGT layers
-            node_type_dims: Dict mapping node type to input feature dimension
+        Tham số:
+            metadata: Metadata của PyG HeteroData (các loại node, edge)
+            hidden_channels: Kích thước chiều ẩn
+            out_channels: Kích thước embedding đầu ra
+            num_heads: Số lượng attention heads
+            num_layers: Số lượng lớp HGT
+            node_type_dims: Dict ánh xạ loại node đến kích thước features đầu vào
         """
         super().__init__()
         
@@ -45,12 +45,12 @@ class HGT(nn.Module):
         self.num_heads = num_heads
         self.num_layers = num_layers
         
-        # Input projection for each node type
+        # Lớp projection đầu vào cho mỗi loại node
         self.lin_dict = nn.ModuleDict()
         for node_type, dim in node_type_dims.items():
             self.lin_dict[node_type] = Linear(dim, hidden_channels)
         
-        # HGT Convolution layers
+        # Các lớp HGT Convolution
         self.convs = nn.ModuleList()
         for _ in range(num_layers):
             conv = HGTConv(
@@ -61,32 +61,32 @@ class HGT(nn.Module):
             )
             self.convs.append(conv)
         
-        # Output projection
+        # Lớp projection đầu ra
         self.lin_out = Linear(hidden_channels, out_channels)
         
     def forward(self, x_dict, edge_index_dict):
         """
-        Forward pass
+        Lan truyền xuôi (Forward pass)
         
-        Args:
-            x_dict: Dictionary of node features {node_type: features}
-            edge_index_dict: Dictionary of edge indices {edge_type: edge_index}
+        Tham số:
+            x_dict: Dictionary chứa features của các node {loại_node: features}
+            edge_index_dict: Dictionary chứa chỉ số các cạnh {loại_edge: edge_index}
             
-        Returns:
-            Dictionary of node embeddings {node_type: embeddings}
+        Trả về:
+            Dictionary chứa embeddings của các node {loại_node: embeddings}
         """
-        # Input projection
+        # Projection đầu vào
         x_dict = {
             node_type: self.lin_dict[node_type](x).relu()
             for node_type, x in x_dict.items()
         }
         
-        # HGT convolution layers
+        # Các lớp HGT convolution
         for conv in self.convs:
             x_dict = conv(x_dict, edge_index_dict)
             x_dict = {key: x.relu() for key, x in x_dict.items()}
         
-        # Output projection
+        # Projection đầu ra
         out_dict = {
             node_type: self.lin_out(x)
             for node_type, x in x_dict.items()
@@ -97,10 +97,10 @@ class HGT(nn.Module):
 
 class HGTLinkPredictor(nn.Module):
     """
-    HGT-based model for link prediction (job recommendation)
+    Mô hình dự đoán liên kết dựa trên HGT (gợi ý công việc)
     
-    Task: Predict which jobs a user might be interested in based on graph structure
-    For this project: Predict job-job similarity or job-location connections
+    Tác vụ: Dự đoán công việc nào người dùng có thể quan tâm dựa trên cấu trúc đồ thị
+    Cho dự án này: Dự đoán độ tương đồng job-job hoặc kết nối job-location
     """
     
     def __init__(
@@ -124,7 +124,7 @@ class HGTLinkPredictor(nn.Module):
             node_type_dims,
         )
         
-        # Link prediction head
+        # Đầu dự đoán liên kết
         self.predictor = nn.Sequential(
             nn.Linear(out_channels * 2, hidden_channels),
             nn.ReLU(),
@@ -134,26 +134,26 @@ class HGTLinkPredictor(nn.Module):
         
     def forward(self, x_dict, edge_index_dict, edge_label_index, edge_type):
         """
-        Args:
-            x_dict: Node features
-            edge_index_dict: Edge indices
-            edge_label_index: Edges to predict (2, num_edges)
-            edge_type: Type of edge to predict ('job', 'job', 'similar_to')
+        Tham số:
+            x_dict: Features của các node
+            edge_index_dict: Chỉ số các cạnh
+            edge_label_index: Các cạnh cần dự đoán (2, num_edges)
+            edge_type: Loại cạnh cần dự đoán ('job', 'similar_to', 'job')
             
-        Returns:
-            Link prediction scores
+        Trả về:
+            Điểm số dự đoán liên kết
         """
-        # Get node embeddings
+        # Lấy embeddings của các node
         node_emb_dict = self.hgt(x_dict, edge_index_dict)
         
-        # Get source and target node type
+        # Lấy loại node nguồn và đích
         src_type, _, dst_type = edge_type
         
-        # Get embeddings for the edges we want to predict
+        # Lấy embeddings cho các cạnh cần dự đoán
         src_emb = node_emb_dict[src_type][edge_label_index[0]]
         dst_emb = node_emb_dict[dst_type][edge_label_index[1]]
         
-        # Concatenate and predict
+        # Ghép nối và dự đoán
         edge_emb = torch.cat([src_emb, dst_emb], dim=-1)
         pred = self.predictor(edge_emb).squeeze(-1)
         
@@ -166,9 +166,9 @@ class HGTLinkPredictor(nn.Module):
 
 class HGTNodeClassifier(nn.Module):
     """
-    HGT-based model for node classification
+    Mô hình phân loại node dựa trên HGT
     
-    Task: Classify job nodes (e.g., predict job category, salary range, etc.)
+    Tác vụ: Phân loại các node công việc (ví dụ: dự đoán danh mục công việc, mức lương, v.v.)
     """
     
     def __init__(
@@ -196,7 +196,7 @@ class HGTNodeClassifier(nn.Module):
             node_type_dims,
         )
         
-        # Classification head
+        # Đầu phân loại
         self.classifier = nn.Sequential(
             nn.Linear(out_channels, hidden_channels),
             nn.ReLU(),
@@ -206,17 +206,17 @@ class HGTNodeClassifier(nn.Module):
         
     def forward(self, x_dict, edge_index_dict):
         """
-        Args:
-            x_dict: Node features
-            edge_index_dict: Edge indices
+        Tham số:
+            x_dict: Features của các node
+            edge_index_dict: Chỉ số các cạnh
             
-        Returns:
-            Classification logits for target node type
+        Trả về:
+            Logits phân loại cho loại node đích
         """
-        # Get node embeddings
+        # Lấy embeddings của các node
         node_emb_dict = self.hgt(x_dict, edge_index_dict)
         
-        # Classify target nodes
+        # Phân loại các node đích
         target_emb = node_emb_dict[self.target_node_type]
         logits = self.classifier(target_emb)
         
@@ -229,27 +229,27 @@ class HGTNodeClassifier(nn.Module):
 
 def create_hgt_model(graph, task='link_prediction', **kwargs):
     """
-    Factory function to create HGT model
+    Hàm factory để tạo mô hình HGT
     
-    Args:
-        graph: PyG HeteroData object
-        task: 'link_prediction' or 'node_classification'
-        **kwargs: Additional model parameters
+    Tham số:
+        graph: Đối tượng PyG HeteroData
+        task: 'link_prediction' hoặc 'node_classification'
+        **kwargs: Các tham số mô hình bổ sung
         
-    Returns:
-        HGT model instance
+    Trả về:
+        Instance của mô hình HGT
     """
-    # Get metadata
+    # Lấy metadata
     metadata = graph.metadata()
     
-    # Get node type dimensions
+    # Lấy kích thước của các loại node
     node_type_dims = {
         'job': graph['job'].x.shape[1],
         'company': graph['company'].x.shape[1],
         'location': graph['location'].x.shape[1],
     }
     
-    # Default parameters
+    # Tham số mặc định
     default_params = {
         'hidden_channels': 128,
         'out_channels': 64,
@@ -258,7 +258,7 @@ def create_hgt_model(graph, task='link_prediction', **kwargs):
     }
     default_params.update(kwargs)
     
-    # Create model based on task
+    # Tạo mô hình dựa trên tác vụ
     if task == 'link_prediction':
         model = HGTLinkPredictor(
             metadata=metadata,
@@ -280,38 +280,38 @@ def create_hgt_model(graph, task='link_prediction', **kwargs):
 
 
 if __name__ == "__main__":
-    # Test model creation
+    # Kiểm tra tạo mô hình
     import torch
     from torch_geometric.data import HeteroData
     
-    # Create dummy graph for testing
-    print("Creating dummy graph for testing...")
+    # Tạo đồ thị giả để test
+    print("Đang tạo đồ thị giả để kiểm tra...")
     graph = HeteroData()
     
-    # Node features
+    # Features của các node
     graph['job'].x = torch.randn(100, 400)
     graph['company'].x = torch.randn(20, 10)
     graph['location'].x = torch.randn(10, 8)
     
-    # Edge indices
+    # Chỉ số các cạnh
     graph['job', 'posted_by', 'company'].edge_index = torch.randint(0, 100, (2, 200))
     graph['company', 'posts', 'job'].edge_index = torch.randint(0, 100, (2, 200))
     graph['job', 'located_in', 'location'].edge_index = torch.randint(0, 100, (2, 200))
     graph['location', 'has', 'job'].edge_index = torch.randint(0, 100, (2, 200))
     graph['job', 'similar_to', 'job'].edge_index = torch.randint(0, 100, (2, 300))
     
-    print("\nGraph structure:")
+    print("\nCấu trúc đồ thị:")
     print(graph)
     
-    # Test link prediction model
+    # Kiểm tra mô hình dự đoán liên kết
     print("\n" + "="*60)
-    print("Testing HGT Link Prediction Model")
+    print("Kiểm tra mô hình HGT dự đoán liên kết")
     print("="*60)
     
     model = create_hgt_model(graph, task='link_prediction', hidden_channels=64, num_layers=2)
-    print(f"\nModel created with {sum(p.numel() for p in model.parameters())} parameters")
+    print(f"\nMô hình đã tạo với {sum(p.numel() for p in model.parameters())} tham số")
     
-    # Forward pass
+    # Lan truyền xuôi
     x_dict = {
         'job': graph['job'].x,
         'company': graph['company'].x,
@@ -325,15 +325,15 @@ if __name__ == "__main__":
         ('job', 'similar_to', 'job'): graph['job', 'similar_to', 'job'].edge_index,
     }
     
-    # Test encoding
+    # Kiểm tra encoding
     node_emb_dict = model.encode(x_dict, edge_index_dict)
-    print("\nNode embeddings:")
+    print("\nEmbeddings của các node:")
     for node_type, emb in node_emb_dict.items():
         print(f"  {node_type}: {emb.shape}")
     
-    # Test link prediction
+    # Kiểm tra dự đoán liên kết
     edge_label_index = torch.randint(0, 100, (2, 50))
     pred = model(x_dict, edge_index_dict, edge_label_index, ('job', 'similar_to', 'job'))
-    print(f"\nLink prediction output shape: {pred.shape}")
+    print(f"\nKích thước output dự đoán liên kết: {pred.shape}")
     
-    print("\n✅ Model test successful!")
+    print("\n✅ Kiểm tra mô hình thành công!")
